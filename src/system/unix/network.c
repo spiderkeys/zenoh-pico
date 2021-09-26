@@ -168,20 +168,20 @@ _zn_socket_result_t _zn_open_tx_session(const char *locator)
         fprintf(stderr, "Locator provided is not for TCP\n");
         exit(1);
     }
-    char *addr_name = strdup(strtok(NULL, ":"));
-    char *s_port = strtok(NULL, ":");
+    char *addr_name = strdup(strtok(NULL, "|"));
+    char *s_port = strtok(NULL, "|");
 
     int status;
     char ip_addr[INET6_ADDRSTRLEN];
-    struct sockaddr_in *remote;
+    struct sockaddr_in6 *remote;
     struct addrinfo *res;
     status = getaddrinfo(addr_name, s_port, NULL, &res);
     free(addr_name);
     if (status == 0 && res != NULL)
     {
         void *addr;
-        remote = (struct sockaddr_in *)res->ai_addr;
-        addr = &(remote->sin_addr);
+        remote = (struct sockaddr_in6 *)res->ai_addr;
+        addr = &(remote->sin6_addr);
         inet_ntop(res->ai_family, addr, ip_addr, sizeof(ip_addr));
     }
     freeaddrinfo(res);
@@ -191,9 +191,9 @@ _zn_socket_result_t _zn_open_tx_session(const char *locator)
 
     _Z_DEBUG_VA("Connecting to: %s:%d\n", addr_name, port);
     free(l);
-    struct sockaddr_in serv_addr;
+    struct sockaddr_in6 serv_addr;
 
-    r.value.socket = socket(PF_INET, SOCK_STREAM, 0);
+    r.value.socket = socket(PF_INET6, SOCK_STREAM, 0);
 
     if (r.value.socket < 0)
     {
@@ -230,10 +230,10 @@ _zn_socket_result_t _zn_open_tx_session(const char *locator)
 #endif
 
     memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
+    serv_addr.sin6_family = AF_INET6;
+    serv_addr.sin6_port = htons(port);
 
-    if (inet_pton(AF_INET, ip_addr, &serv_addr.sin_addr) <= 0)
+    if (inet_pton(AF_INET6, ip_addr, &serv_addr.sin6_addr) <= 0)
     {
         r.tag = _z_res_t_ERR;
         r.value.error = _zn_err_t_INVALID_LOCATOR;
