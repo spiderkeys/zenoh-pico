@@ -140,7 +140,7 @@ zn_session_t *zn_open(zn_properties_t *config)
     srand(time(NULL));
 
     // Attempt to open a socket
-    _zn_socket_result_t r_sock = _zn_open_tx_session(locator);
+    _zn_socket_result_t r_sock = _zn_open_tx_session_ipv6(locator);
     if (r_sock.tag == _z_res_t_ERR)
     {
         if (locator_is_scouted)

@@ -139,7 +139,7 @@ zn_hello_array_t _zn_scout(unsigned int what, zn_properties_t *config, unsigned 
     locs.val = NULL;
 
     z_str_t addr = _zn_select_scout_iface();
-    _zn_socket_result_t r = _zn_create_udp_socket(addr, 0, scout_period);
+    _zn_socket_result_t r = _zn_create_udp_socket_ipv4(addr, 0, scout_period);
     if (r.tag == _z_res_t_ERR)
     {
         _Z_DEBUG("Unable to create scouting socket\n");
@@ -165,7 +165,7 @@ zn_hello_array_t _zn_scout(unsigned int what, zn_properties_t *config, unsigned 
     z_str_t ip_addr = strtok(sock_addr, ":");
     int port_num = atoi(strtok(NULL, ":"));
 
-    struct sockaddr_in *maddr = _zn_make_socket_address(ip_addr, port_num);
+    struct sockaddr_in *maddr = _zn_make_socket_address_ipv4(ip_addr, port_num);
     socklen_t salen = sizeof(struct sockaddr_in);
     locs = _zn_scout_loop(r.value.socket, &wbf, (struct sockaddr *)maddr, salen, scout_period, exit_on_first);
     free(maddr);

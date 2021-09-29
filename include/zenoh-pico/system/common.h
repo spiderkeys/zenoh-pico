@@ -60,11 +60,14 @@ time_t z_time_elapsed_s(z_time_t *time);
 _ZN_RESULT_DECLARE(_zn_socket_t, socket)
 
 char *_zn_select_scout_iface(void);
-_zn_socket_result_t _zn_open_tx_session(const char *locator);
+_zn_socket_result_t _zn_open_tx_session_ipv4(const char *locator);
+_zn_socket_result_t _zn_open_tx_session_ipv6(const char *locator);
 void _zn_close_tx_session(_zn_socket_t sock);
 
-struct sockaddr_in *_zn_make_socket_address(const char *addr, int port);
-_zn_socket_result_t _zn_create_udp_socket(const char *addr, int port, int recv_timeout);
+struct sockaddr_in *_zn_make_socket_address_ipv4(const char *addr, int port);
+struct sockaddr_in *_zn_make_socket_address_ipv6(const char *addr, int port);
+_zn_socket_result_t _zn_create_udp_socket_ipv4(const char *addr, int port, int recv_timeout);
+_zn_socket_result_t _zn_create_udp_socket_ipv6(const char *addr, int port, int recv_timeout);
 
 int _zn_send_dgram_to(_zn_socket_t sock, const _z_wbuf_t *wbf, const struct sockaddr *dest, socklen_t salen);
 int _zn_recv_dgram_from(_zn_socket_t sock, _z_zbuf_t *zbf, struct sockaddr *from, socklen_t *salen);

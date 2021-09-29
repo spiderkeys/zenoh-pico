@@ -17,6 +17,13 @@
 #include "zenoh-pico/utils/collections.h"
 #include "zenoh-pico/utils/private/logging.h"
 
+#include <zephyr.h>
+#include <posix/pthread.h>
+
+#define ZENOH_MAIN_THREAD_STACK_SIZE 2048
+
+K_THREAD_STACK_DEFINE( zenoh_read_stack, ZENOH_MAIN_THREAD_STACK_SIZE );
+
 void *_znp_read_task(void *arg)
 {
     zn_session_t *z = (zn_session_t *)arg;
@@ -120,13 +127,23 @@ EXIT_RECV_LOOP:
     return 0;
 }
 
+
+
 int znp_start_read_task(zn_session_t *z)
 {
     z_task_t *task = (z_task_t *)malloc(sizeof(z_task_t));
     memset(task, 0, sizeof(pthread_t));
     z->read_task = task;
-    if (z_task_init(task, NULL, _znp_read_task, z) != 0)
+
+    pthread_attr_t attr;
+    (void)pthread_attr_init(&attr);
+	(void)pthread_attr_setstack(&attr, &zenoh_read_stack,
+				    ZENOH_MAIN_THREAD_STACK_SIZE);
+
+    int ret = z_task_init(task, &attr, _znp_read_task, z);
+    if ( ret != 0)
     {
+        printk( "Tsk init failed; %d\n", ret );
         return -1;
     }
     return 0;

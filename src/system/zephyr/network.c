@@ -57,13 +57,26 @@ char *_zn_select_scout_iface()
 
     if (iface_info.iface != NULL)
     {
-        struct net_addr addr = iface_info.iface->config.ip.ipv4->unicast->address;
-        struct sockaddr_in sa = {.sin_family = addr.family, .sin_addr = addr.in_addr};
-
-        getnameinfo((const struct sockaddr *)&sa,
+        #if defined(CONFIG_NET_NATIVE_IPV4)
+            struct net_addr addr = iface_info.iface->config.ip.ipv4->unicast->address;
+            struct sockaddr_in sa = {.sin_family = addr.family, .sin_addr = addr.in_addr};
+        
+            getnameinfo((const struct sockaddr *)&sa,
                     sizeof(struct sockaddr_in),
                     host, NI_MAXHOST,
                     NULL, 0, NI_NUMERICHOST);
+        
+        #elif defined(CONFIG_NET_NATIVE_IPV6)
+            struct net_addr addr = iface_info.iface->config.ip.ipv6->unicast->address;
+            struct sockaddr_in6 sa = {.sin6_family = addr.family, .sin6_addr = addr.in6_addr};
+            
+            getnameinfo((const struct sockaddr *)&sa,
+                    sizeof(struct sockaddr_in6),
+                    host, NI_MAXHOST,
+                    NULL, 0, NI_NUMERICHOST);
+        #endif
+
+
         _Z_DEBUG_VA("\tAddress: <%s>\n", host);
 
         char *result = strdup(host);
@@ -73,7 +86,7 @@ char *_zn_select_scout_iface()
     return 0;
 }
 
-struct sockaddr_in *_zn_make_socket_address(const char *addr, int port)
+struct sockaddr_in *_zn_make_socket_address_ipv4(const char *addr, int port)
 {
     struct sockaddr_in *saddr = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
     memset(saddr, 0, sizeof(struct sockaddr_in));
@@ -89,7 +102,23 @@ struct sockaddr_in *_zn_make_socket_address(const char *addr, int port)
     return saddr;
 }
 
-_zn_socket_result_t _zn_create_udp_socket(const char *addr, int port, int timeout_usec)
+struct sockaddr_in *_zn_make_socket_address_ipv6(const char *addr, int port)
+{
+    struct sockaddr_in6 *saddr = (struct sockaddr_in6 *)malloc(sizeof(struct sockaddr_in6));
+    memset(saddr, 0, sizeof(struct sockaddr_in6));
+    saddr->sin6_family = AF_INET6;
+    saddr->sin6_port = htons(port);
+
+    if (inet_pton(AF_INET, addr, &(saddr->sin6_addr)) <= 0)
+    {
+        free(saddr);
+        return NULL;
+    }
+
+    return saddr;
+}
+
+_zn_socket_result_t _zn_create_udp_socket_ipv4(const char *addr, int port, int timeout_usec)
 {
     _zn_socket_result_t r;
     r.tag = _z_res_t_OK;
@@ -143,7 +172,61 @@ _zn_socket_result_t _zn_create_udp_socket(const char *addr, int port, int timeou
     return r;
 }
 
-_zn_socket_result_t _zn_open_tx_session(const char *locator)
+_zn_socket_result_t _zn_create_udp_socket_ipv6(const char *addr, int port, int timeout_usec)
+{
+    _zn_socket_result_t r;
+    r.tag = _z_res_t_OK;
+
+    _Z_DEBUG_VA("Binding UDP Socket to: %s:%d\n", addr, port);
+    struct sockaddr_in6 saddr;
+
+    r.value.socket = socket(PF_INET6, SOCK_DGRAM, 0);
+
+    if (r.value.socket < 0)
+    {
+        r.tag = _z_res_t_ERR;
+        r.value.error = r.value.socket;
+        r.value.socket = 0;
+        return r;
+    }
+
+    memset(&saddr, 0, sizeof(saddr));
+    saddr.sin6_family = AF_INET6;
+    saddr.sin6_port = htons(port);
+
+    if (inet_pton(AF_INET6, addr, &saddr.sin6_addr) <= 0)
+    {
+        r.tag = _z_res_t_ERR;
+        r.value.error = _zn_err_t_INVALID_LOCATOR;
+        r.value.socket = 0;
+        return r;
+    }
+
+    if (bind(r.value.socket, (struct sockaddr *)&saddr, sizeof(saddr)) < 0)
+    {
+        r.tag = _z_res_t_ERR;
+        r.value.error = _zn_err_t_INVALID_LOCATOR;
+        r.value.socket = 0;
+        return r;
+    }
+
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = timeout_usec;
+    if (setsockopt(r.value.socket, SOL_SOCKET, SO_RCVTIMEO, (void *)&timeout, sizeof(struct timeval)) == -1)
+    {
+        r.tag = _z_res_t_ERR;
+        r.value.error = errno;
+        close(r.value.socket);
+        r.value.socket = 0;
+        return r;
+    }
+
+    // NOTE: SO_SNDTIMEO socket option is not supported in Zephyr
+    return r;
+}
+
+_zn_socket_result_t _zn_open_tx_session_ipv4(const char *locator)
 {
     _zn_socket_result_t r;
     r.tag = _z_res_t_OK;
@@ -212,6 +295,82 @@ _zn_socket_result_t _zn_open_tx_session(const char *locator)
         return r;
     }
 
+    return r;
+}
+
+_zn_socket_result_t _zn_open_tx_session_ipv6(const char *locator)
+{
+    _zn_socket_result_t r;
+    r.tag = _z_res_t_OK;
+    char *l = strdup(locator);
+    printk("Connecting to: %s:\n", locator);
+    char *tx = strtok(l, "/");
+    if (strcmp(tx, "tcp") != 0)
+    {
+        printk(stderr, "Locator provided is not for TCP\n");
+        _exit(-1);
+    }
+    char *addr_name = strdup(strtok(NULL, "|"));
+    char *s_port = strtok(NULL, "|");
+
+    int status;
+    char ip_addr[INET6_ADDRSTRLEN];
+    struct sockaddr_in6 *remote;
+    struct addrinfo *res;
+    status = getaddrinfo(addr_name, s_port, NULL, &res);
+    if (status == 0 && res != NULL)
+    {
+        void *addr;
+        remote = (struct sockaddr_in *)res->ai_addr;
+        addr = &(remote->sin6_addr);
+        inet_ntop(res->ai_family, addr, ip_addr, sizeof(ip_addr));
+    }
+    freeaddrinfo(res);
+
+    int port;
+    sscanf(s_port, "%d", &port);
+
+    printk("Connecting to: %s:%d\n", addr_name, port);
+    free(addr_name);
+    free(l);
+    struct sockaddr_in6 serv_addr;
+
+    r.value.socket = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+
+    if (r.value.socket < 0)
+    {
+        printk( "x\n" );
+        r.tag = _z_res_t_ERR;
+        r.value.error = r.value.socket;
+        r.value.socket = 0;
+        return r;
+    }
+
+    // NOTE: SO_KEEPALIVE and SO_LINGER socket options are not supported in Zephyr
+
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin6_family = AF_INET6;
+    serv_addr.sin6_port = htons(port);
+
+    if (inet_pton(AF_INET6, ip_addr, &serv_addr.sin6_addr) <= 0)
+    {
+        printk( "y\n" );
+        r.tag = _z_res_t_ERR;
+        r.value.error = _zn_err_t_INVALID_LOCATOR;
+        r.value.socket = 0;
+        return r;
+    }
+
+    if (connect(r.value.socket, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    {
+        printk( "z\n" );
+        r.tag = _z_res_t_ERR;
+        r.value.error = _zn_err_t_TX_CONNECTION;
+        r.value.socket = 0;
+        return r;
+    }
+
+    printk("Connected to: %s!\n", locator);
     return r;
 }
 
