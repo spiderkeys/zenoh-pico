@@ -19,6 +19,11 @@
 #include "zenoh-pico/utils/private/logging.h"
 #include "zenoh-pico/system/common.h"
 
+#define ZENOH_MAIN_THREAD_STACK_SIZE 2048
+
+K_THREAD_STACK_DEFINE( zenoh_lease_stack, ZENOH_MAIN_THREAD_STACK_SIZE );
+
+
 void *_znp_lease_task(void *arg)
 {
     zn_session_t *zn = (zn_session_t *)arg;
@@ -94,7 +99,12 @@ int znp_start_lease_task(zn_session_t *zn)
     z_task_t *task = (z_task_t *)malloc(sizeof(z_task_t));
     memset(task, 0, sizeof(pthread_t));
     zn->lease_task = task;
-    if (z_task_init(task, NULL, _znp_lease_task, zn) != 0)
+    pthread_attr_t attr;
+    (void)pthread_attr_init(&attr);
+	(void)pthread_attr_setstack(&attr, &zenoh_lease_stack,
+				    ZENOH_MAIN_THREAD_STACK_SIZE);
+
+    if (z_task_init(task, &attr, _znp_lease_task, zn) != 0)
     {
         return -1;
     }
