@@ -164,15 +164,21 @@ _zn_socket_result_t _zn_open_udp(void *arg, const clock_t tout)
     hints.ai_flags = AI_PASSIVE;
     hints.ai_protocol = raddr->ai_protocol;
 
-    struct addrinfo *laddr;
-    if (getaddrinfo(NULL, "0", &hints, &laddr) != 0)  // port 0 --> random
-    {
-        r.tag = _z_res_t_ERR;
-        r.value.error = _zn_err_t_INVALID_LOCATOR;
-        return r;
-    }
+    // NOTE: Zephyr returns EAI_NONAME if you pass a null host. It also does this for port values not between 1:65535.
+    // Because of this, the getaddrinfo() call will fail. However, we seem to already have all the info we need in raddr
 
-    r.value.socket = socket(laddr->ai_family, laddr->ai_socktype, laddr->ai_protocol);
+    // struct addrinfo *laddr;
+    // int getaddrret = getaddrinfo(NULL, "0", &hints, &laddr);
+    // if( getaddrret != 0)  // port 0 --> random
+    // {
+    //     printk( "getaddrerror: %d\n", getaddrret );
+    //     // If error occurs here, something tries to access a null pointer later!
+    //     r.tag = _z_res_t_ERR;
+    //     r.value.error = _zn_err_t_INVALID_LOCATOR;
+    //     return r;
+    // }
+
+    r.value.socket = socket( raddr->ai_family, raddr->ai_socktype, raddr->ai_protocol );
     if (r.value.socket < 0)
     {
         r.tag = _z_res_t_ERR;
@@ -199,7 +205,7 @@ _zn_socket_result_t _zn_open_udp(void *arg, const clock_t tout)
         return r;
     }
 
-    freeaddrinfo(laddr);
+    // freeaddrinfo(laddr);
     return r;
 }
 
